@@ -1,0 +1,32 @@
+# Desired state of the network. The controller (netctl.py) makes the routers match this file.
+
+api:
+  user: controller
+  password: admin
+
+relays:
+  RELAY1:
+    mgmt: 203.0.113.101      # address the controller uses to reach the relay's API
+    public: 203.0.113.101    # address the sites connect to (WireGuard endpoint)
+    port: 51820              # WireGuard port on the relay
+    net: 10.101.0            # tunnel subnet behind this relay (relay = .1)
+    site_if: wg-r1           # interface name on the sites for this relay
+    site_port: 13231         # listen-port of that interface on the sites
+  RELAY2:
+    mgmt: 203.0.113.102
+    public: 203.0.113.102
+    port: 51820
+    net: 10.102.0
+    site_if: wg-r2
+    site_port: 13232
+
+sites:
+  hEX-A:
+    id: 11                   # last octet of the site's tunnel addresses
+    lan: 10.10.1.0/24
+  hEX-B:
+    id: 12
+    lan: 10.10.2.0/24
+  hEX-C:
+    id: 13
+    lan: 10.10.3.0/24
