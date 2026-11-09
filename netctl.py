@@ -4,19 +4,27 @@
 Reads the desired state from network.yaml and brings every relay and site router
 to that state through the RouterOS API.
 
-  python3 netctl.py status   show tunnels and active routes
-  python3 netctl.py apply    configure everything (safe to run again and again)
+  python3 netctl.py status     show tunnels, delays and active routes
+  python3 netctl.py apply      configure everything (safe to run again and again)
+  python3 netctl.py optimize   measure delays, pick the fastest relay for every pair of sites, apply
+  python3 netctl.py watch [s]  run optimize every s seconds (default 60)
 
 Everything netctl creates or adopts is marked with comment=netctl. Only items with
 that mark are ever removed, so manual settings without it are left alone.
 """
+import json
+import os
+import re
 import sys
+import time
 
 import yaml
 from librouteros import connect
 
 TAG = "netctl"
 CHANGES = 0
+METRICS = "metrics.json"   # last measured delays and chosen relays
+HYSTERESIS = (1.2, 5.0)    # switch only if the new relay is >20% and >5 ms better
 
 
 # ---------- helpers ----------
@@ -110,6 +118,61 @@ def connect_all(cfg):
     return conns
 
 
+# ---------- delays and relay choice ----------
+
+def load_metrics():
+    try:
+        with open(METRICS) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def save_metrics(m):
+    with open(METRICS, "w") as f:
+        json.dump(m, f, indent=2)
+
+
+def parse_time(s):
+    """RouterOS durations: '82ms141us', '966us', '1s200ms' -> milliseconds."""
+    unit = {"s": 1000.0, "ms": 1.0, "us": 0.001}
+    return sum(float(n) * unit[u] for n, u in re.findall(r"(\d+(?:\.\d+)?)(ms|us|s)", s or ""))
+
+
+def ping(api, address, count=3):
+    """Ping from the router itself; average RTT in ms, or None if nothing came back."""
+    last = {}
+    for r in api("/ping", address=address, count=count, interval="200ms"):
+        last = r
+    if not last or int(last.get("received", 0)) == 0:
+        return None
+    return round(parse_time(last.get("avg-rtt")), 1)
+
+
+def cost(rtt, a, b, r):
+    """Path a -> relay r -> b costs RTT(a, r) + RTT(b, r)."""
+    x, y = rtt.get(a, {}).get(r), rtt.get(b, {}).get(r)
+    return float("inf") if x is None or y is None else x + y
+
+
+def pair(a, b):
+    return "|".join(sorted([a, b]))
+
+
+def relay_order(cfg, metrics, a, b):
+    """Relays for traffic between sites a and b, best first."""
+    relays = list(cfg["relays"])
+    rtt = metrics.get("rtt", {})
+    if a not in rtt or b not in rtt:
+        return relays                      # not measured yet: order from network.yaml
+    order = sorted(relays, key=lambda r: cost(rtt, a, b, r))
+    chosen = metrics.get("choice", {}).get(pair(a, b))
+    if chosen in relays and cost(rtt, a, b, chosen) != float("inf"):
+        order.remove(chosen)
+        order.insert(0, chosen)
+    return order
+
+
 # ---------- commands ----------
 
 def apply(cfg):
@@ -148,19 +211,22 @@ def apply(cfg):
         prune(api, ("ip", "route"), keep_routes,
               lambda i: (i.get("dst-address"), i.get("gateway")), log)
 
-    # Phase 3: sites know every relay and have main + backup routes to the other LANs.
+    # Phase 3: sites know every relay and have routes to the other LANs:
+    # distance 1 through the best relay for that pair of sites, then the others as backups.
+    metrics = load_metrics()
     for s, sc in sites.items():
         api, log = conns[s], logger(s)
         keep_routes = set()
-        for distance, (r, rc) in enumerate(relays.items(), start=1):
+        for r, rc in relays.items():
             ensure(api, ("interface", "wireguard", "peers"), {"public-key": relay_key[r]},
                    {"interface": rc["site_if"], "endpoint-address": rc["public"],
                     "endpoint-port": rc["port"], "allowed-address": "10.0.0.0/8",
                     "persistent-keepalive": "25s"}, log)
-            gw = f'{rc["net"]}.1'
-            for o, oc in sites.items():
-                if o == s:
-                    continue
+        for o, oc in sites.items():
+            if o == s:
+                continue
+            for distance, r in enumerate(relay_order(cfg, metrics, s, o), start=1):
+                gw = f'{relays[r]["net"]}.1'
                 ensure(api, ("ip", "route"), {"dst-address": oc["lan"], "gateway": gw},
                        {"distance": distance, "check-gateway": "ping"}, log)
                 keep_routes.add((oc["lan"], gw))
@@ -174,6 +240,54 @@ def apply(cfg):
     print(f"Done: {CHANGES} change(s)." if CHANGES else "Done: everything already matches network.yaml.")
 
 
+def optimize(cfg):
+    """Measure RTT from every site to every relay, choose a relay per pair of sites, apply."""
+    relays, sites = cfg["relays"], cfg["sites"]
+    conns = connect_all(cfg)
+    rtt = {}
+    print("\nRTT from each site to each relay (ms):")
+    print("  " + " " * 8 + "".join(f"{r:>10}" for r in relays))
+    for s in sites:
+        rtt[s] = {r: ping(conns[s], f'{rc["net"]}.1') for r, rc in relays.items()}
+        print(f"  {s:8}" + "".join(f"{('-' if v is None else v):>10}" for v in rtt[s].values()))
+    for api in conns.values():
+        api.close()
+
+    old = load_metrics().get("choice", {})
+    choice = {}
+    print("\nRelay for each pair of sites:")
+    names = list(sites)
+    for i, a in enumerate(names):
+        for b in names[i + 1:]:
+            costs = {r: cost(rtt, a, b, r) for r in relays}
+            best = min(costs, key=costs.get)
+            prev = old.get(pair(a, b))
+            keep = (prev in costs and prev != best and costs[prev] != float("inf")
+                    and costs[prev] <= costs[best] * HYSTERESIS[0] + HYSTERESIS[1])
+            choice[pair(a, b)] = prev if keep else best
+            detail = ", ".join(f"{r} {c:.1f}" if c != float("inf") else f"{r} down" for r, c in costs.items())
+            note = "" if prev in (None, choice[pair(a, b)]) else f"  (was {prev})"
+            if keep:
+                note = f"  (kept {prev}: not enough better)"
+            print(f"  {a} <-> {b}: {detail} -> {choice[pair(a, b)]}{note}")
+
+    save_metrics({"time": time.strftime("%Y-%m-%d %H:%M:%S"), "rtt": rtt, "choice": choice})
+    print()
+    apply(cfg)
+
+
+def watch(cfg, every=60):
+    global CHANGES
+    while True:
+        print(f"\n===== {time.strftime('%H:%M:%S')} =====")
+        try:
+            CHANGES = 0
+            optimize(load())
+        except Exception as e:
+            print(f"ERROR: {e}")
+        time.sleep(every)
+
+
 def status(cfg):
     conns = connect_all(cfg)
     for r in cfg["relays"]:
@@ -181,6 +295,11 @@ def status(cfg):
         for p in conns[r].path("interface", "wireguard", "peers"):
             print(f'  {p.get("allowed-address", ""):32} from {p.get("current-endpoint-address") or "-":15}'
                   f'  handshake {p.get("last-handshake") or "never"}')
+    m = load_metrics()
+    if m.get("rtt"):
+        print(f"\n=== Delays measured {m.get('time')} (ms) ===")
+        for s, row in m["rtt"].items():
+            print(f"  {s:8} " + "  ".join(f"{r} {('-' if v is None else v)}" for r, v in row.items()))
     lans = {sc["lan"] for sc in cfg["sites"].values()}
     for s in cfg["sites"]:
         print(f"\n=== {s} ===")
@@ -193,14 +312,17 @@ def status(cfg):
 
 
 if __name__ == "__main__":
-    commands = {"apply": apply, "status": status}
+    commands = {"apply": apply, "status": status, "optimize": optimize, "watch": watch}
     cmd = sys.argv[1] if len(sys.argv) > 1 else "status"
     if cmd not in commands:
-        print("usage: python3 netctl.py [status|apply] [network.yaml]")
+        print("usage: python3 netctl.py [status|apply|optimize|watch [seconds]]")
         sys.exit(1)
-    cfg = load(sys.argv[2] if len(sys.argv) > 2 else "network.yaml")
+    cfg = load()
     try:
-        commands[cmd](cfg)
+        if cmd == "watch":
+            watch(cfg, int(sys.argv[2]) if len(sys.argv) > 2 else 60)
+        else:
+            commands[cmd](cfg)
     except RuntimeError as e:
         print(f"ERROR: {e}")
         sys.exit(2)
