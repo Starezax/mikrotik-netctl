@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GNS3: топологія і команди для кожного вузла</title>
+<style>
+:root{--bg:#f7f6f2;--card:#fff;--text:#1f1e1b;--muted:#6b6a64;--border:#dcdad2;--accent:#2f6fd0;--ok:#1d9e75;--bad:#d64545;--warn:#c98a12;--relay:#6b62d6;--isp:#c98a12;--site:#d85a30;--pc:#5f5e5a;--ctrl:#0f6e56;--code:#f1efe8}
+@media (prefers-color-scheme:dark){:root{--bg:#1b1b19;--card:#262624;--text:#ecebe6;--muted:#a3a29b;--border:#3d3c38;--accent:#6aa5f0;--ok:#4cc79c;--bad:#f07070;--warn:#e8b04a;--relay:#a59ff0;--isp:#e8b04a;--site:#f0997b;--pc:#b4b2a9;--ctrl:#5dcaa5;--code:#1f1f1d}}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);line-height:1.5}
+main{max-width:1400px;margin:0 auto;padding:22px 16px 60px}
+h1{font-size:23px;font-weight:650;margin:0 0 4px}
+h2{font-size:19px;font-weight:650;margin:0 0 4px}
+h3{font-size:15px;font-weight:650;margin:0}
+.sub{color:var(--muted);margin:0 0 14px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px}
+.order{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;font-size:13px}
+.order span{background:var(--card);border:1px solid var(--border);border-radius:999px;padding:3px 10px;cursor:default}
+.order b{color:var(--accent)}
+.order .ph{border-color:transparent;background:transparent;color:var(--muted);padding-left:0}
+.layout{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:14px;align-items:start;margin-top:12px}
+@media (max-width:1000px){.layout{grid-template-columns:1fr}}
+svg{width:100%;height:auto;display:block}
+svg .node{cursor:pointer}
+svg .node rect{fill:var(--card);stroke-width:1.5}
+svg .node:hover rect{stroke-width:2.6}
+svg .node.sel rect{stroke-width:3.2}
+svg .relay rect{stroke:var(--relay);fill:color-mix(in srgb,var(--relay) 11%,var(--card))}
+svg .isp rect{stroke:var(--isp);fill:color-mix(in srgb,var(--isp) 11%,var(--card))}
+svg .isp.closed rect{stroke:var(--bad);fill:color-mix(in srgb,var(--bad) 8%,var(--card))}
+svg .site rect{stroke:var(--site);fill:color-mix(in srgb,var(--site) 11%,var(--card))}
+svg .pc rect{stroke:var(--pc)}
+svg .sw rect{stroke:var(--accent);fill:color-mix(in srgb,var(--accent) 9%,var(--card))}
+svg .ctrl rect{stroke:var(--ctrl);fill:color-mix(in srgb,var(--ctrl) 12%,var(--card))}
+svg .nat rect{stroke:var(--muted);stroke-dasharray:4 3}
+svg .chk rect{stroke:var(--ok);fill:color-mix(in srgb,var(--ok) 11%,var(--card));stroke-dasharray:5 4}
+svg text.t{font-size:15px;font-weight:650;fill:var(--text);text-anchor:middle;dominant-baseline:central;pointer-events:none}
+svg text.m{font-size:12px;font-weight:600;fill:var(--accent);text-anchor:middle;dominant-baseline:central;pointer-events:none}
+svg text.s{font-size:12px;fill:var(--muted);text-anchor:middle;dominant-baseline:central;pointer-events:none}
+svg text.p{font-size:11px;fill:var(--muted);pointer-events:none}
+svg text.badge{font-size:10px;font-weight:700;fill:#fff;text-anchor:middle;dominant-baseline:central;pointer-events:none}
+svg rect.badge{fill:var(--accent)}
+svg .wire{stroke:var(--muted);stroke-width:1.6}
+svg .tun{fill:none;stroke:var(--relay);stroke-width:1.6;stroke-dasharray:6 5;opacity:.55}
+svg .p2p{fill:none;stroke:var(--site);stroke-width:2.2}
+svg .p2p.off{stroke:var(--bad);stroke-dasharray:4 4;opacity:.8}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--muted);margin-top:8px;align-items:center}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;border:1.5px solid;margin-right:5px;vertical-align:-1px}
+label.tg{display:flex;gap:6px;align-items:center;cursor:pointer}
+.info{font-size:14px;color:var(--muted);margin:6px 0 12px}
+table{border-collapse:collapse;font-size:13px;width:100%;margin-bottom:12px}
+td,th{border-bottom:1px solid var(--border);padding:5px 6px;text-align:left;vertical-align:top}
+th{color:var(--muted);font-weight:500}
+.step{margin-bottom:14px}
+.stephead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
+.num{display:inline-block;background:var(--accent);color:#fff;border-radius:999px;font-size:12px;font-weight:700;padding:1px 9px;margin-right:6px}
+pre{margin:0;background:var(--code);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;line-height:1.6;white-space:pre-wrap;word-break:break-all}
+pre .ph{background:color-mix(in srgb,var(--bad) 18%,transparent);color:var(--bad);border-radius:4px;padding:0 3px}
+pre .kv{background:color-mix(in srgb,var(--ok) 18%,transparent);border-radius:4px;padding:0 3px}
+.note{font-size:13px;color:var(--muted);margin-top:6px}
+.modbox{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline;background:color-mix(in srgb,var(--accent) 9%,transparent);border:1px solid color-mix(in srgb,var(--accent) 35%,transparent);border-radius:8px;padding:8px 12px;margin:8px 0 4px;font-size:14px}
+.modbox span{color:var(--muted);font-size:13px}
+.state{font-size:13px;border-left:3px solid var(--ok);padding:6px 10px;margin:6px 0 12px;background:color-mix(in srgb,var(--ok) 8%,transparent)}
+button{font:inherit;font-size:13px;border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:8px;padding:4px 10px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.done{border-color:var(--ok);color:var(--ok)}
+.keys{margin-top:14px}
+.keys .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:8px 12px;margin-top:10px}
+.keys label{font-size:12px;color:var(--muted);display:block}
+.keys input{width:100%;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;background:var(--bg);color:var(--text)}
+.keys input.filled{border-color:var(--ok)}
+#panel{position:sticky;top:12px;max-height:calc(100vh - 24px);overflow:auto}
+code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px}
+svg g.node rect.badge{fill:var(--accent);stroke:none}
+</style>
+</head>
+<body>
+<main>
+<h1>GNS3: що де стоїть і що на ньому прописувати</h1>
+<p class="sub">Поточний стан лабораторії проєкту. Натисніть на вузол: праворуч його модуль GNS3, інтерфейси, поточний стан і всі команди, пронумеровані в порядку, в якому мережу будували.</p>
+
+<div class="order">
+  <span class="ph">Ручна мережа:</span>
+  <span><b>1</b> кабелі</span><span><b>2</b> ISP A–C</span><span><b>3</b> relay: база</span><span><b>4</b> hEX A–C</span><span><b>5</b> relay: peer'и</span><span><b>6</b> PC A–C</span><span><b>7</b> перевірка</span>
+</div>
+<div class="order">
+  <span class="ph">Автоматизація:</span>
+  <span><b>8</b> controller</span><span><b>9</b> шлях керування + API</span><span><b>10</b> netctl apply</span><span><b>11</b> провіженінг hEX-D</span><span><b>12</b> оптимізація</span><span><b>13</b> P2P</span><span><b>14</b> fallback</span>
+</div>
+
+<div class="layout">
+  <div>
+    <div class="card">
+      <svg id="map" viewBox="0 0 1100 700" role="img" aria-label="Топологія GNS3: два relay, controller і чотири провайдери на комутаторі INTERNET; за кожним провайдером роутер hEX і ПК">
+        <g id="tunnels" style="display:none"></g>
+        <g id="p2p" style="display:none"></g>
+        <g id="wires"></g>
+        <g id="nodes"></g>
+      </svg>
+      <div class="legend">
+        <span><i style="border-color:var(--relay)"></i>relay</span>
+        <span><i style="border-color:var(--ctrl)"></i>controller</span>
+        <span><i style="border-color:var(--isp)"></i>ISP з port mapping</span>
+        <span><i style="border-color:var(--bad)"></i>ISP «закритий»</span>
+        <span><i style="border-color:var(--site)"></i>роутер сайту</span>
+        <span><i style="border-color:var(--pc)"></i>ПК</span>
+        <span style="color:var(--accent)">синім — модуль GNS3</span>
+      </div>
+      <div class="legend">
+        <label class="tg"><input type="checkbox" onchange="document.getElementById('tunnels').style.display=this.checked?'':'none'">тунелі до relay</label>
+        <label class="tg"><input type="checkbox" onchange="document.getElementById('p2p').style.display=this.checked?'':'none'">прямі P2P-тунелі (червоний пунктир — не працює, йде через relay)</label>
+      </div>
+    </div>
+
+    <div class="card keys">
+      <h3>Публічні ключі WireGuard (тільки для ручної фази, кроки 4–5)</h3>
+      <p class="note">Після кроку 10 ключами керує netctl сам. Ці поля потрібні, лише якщо збираєте ручну фазу з нуля: ключ береться з <code>/interface wireguard print</code> (поле public-key) і підставляється в команди. Зберігаються тільки у вашому браузері.</p>
+      <div class="grid" id="keyGrid"></div>
+      <div style="margin-top:10px"><button onclick="clearKeys()">Очистити ключі</button></div>
+    </div>
+  </div>
+  <div class="card" id="panel"></div>
+</div>
+</main>
+
+<script>
+const KEYS=[['RELAY1_PUB','RELAY1 → wg0'],['RELAY2_PUB','RELAY2 → wg0'],['A_R1_PUB','hEX-A → wg-r1'],['A_R2_PUB','hEX-A → wg-r2'],['B_R1_PUB','hEX-B → wg-r1'],['B_R2_PUB','hEX-B → wg-r2'],['C_R1_PUB','hEX-C → wg-r1'],['C_R2_PUB','hEX-C → wg-r2']];
+let keyVals={};
+try{keyVals=JSON.parse(localStorage.getItem('gns3keys')||'{}')}catch(e){keyVals={}}
+
+const CHR='MikroTik CHR 7.19.4', ALP='Alpine Linux Virt 3.22.1';
+const COLX={A:170,B:420,C:670,D:920};
+const API_HEX=`/user add name=controller group=full password="admin"
+/ip service set api address=10.101.0.1/32,10.102.0.1/32 disabled=no`;
+const P2P_MAP=(n,ip)=>`/ip firewall nat add chain=dstnat dst-address=203.0.113.1${n} protocol=udp dst-port=13233 action=dst-nat to-addresses=${ip} comment="p2p port mapping"
+/ip firewall connection remove [find where dst-address~":13233"]
+/ip firewall connection remove [find where src-address~":13233"]`;
+const CLEAR13233=`/ip firewall connection remove [find where dst-address~":13233"]
+/ip firewall connection remove [find where src-address~":13233"]`;
+
+function ispBase(L,n){return {n:2,title:'Адреси і NAT',cmds:
+`/system identity set name=ISP-${L}
+/ip address add address=203.0.113.1${n}/24 interface=ether1
+/ip address add address=100.64.${n}.1/24 interface=ether2
+/ip firewall nat add chain=srcnat out-interface=ether1 action=masquerade`};}
+
+const NODES={};
+NODES.RELAY1=relay(1,330); NODES.RELAY2=relay(2,770);
+function relay(r,x){return{type:'relay',title:'RELAY'+r,sub:'203.0.113.10'+r,mod:CHR,ad:1,x,y:70,
+  role:'Сервер-посередник у «публічному інтернеті». Усі роутери самі тримають до нього тунелі (вони за NAT), а він пересилає трафік між ними і є шляхом controller → hEX.',
+  state:'Peer\'ами і маршрутами керує netctl (comment=netctl). '+(r===2?'На лінку INTERNET ↔ RELAY2 зараз стоїть затримка 40 мс (GNS3 packet filter), тому основний relay — RELAY1.':'Зараз це основний relay (на RELAY2 штучна затримка).'),
+  ifs:[['ether1','203.0.113.10'+r+'/24','INTERNET (switch)'],['wg0','10.10'+r+'.0.1/24','тунелі до всіх hEX']],
+  steps:[
+   {n:3,title:'Адреси і ключ WireGuard',cmds:
+`/system identity set name=RELAY${r}
+/ip address add address=203.0.113.10${r}/24 interface=ether1
+/interface wireguard add name=wg0 listen-port=51820
+/ip address add address=10.10${r}.0.1/24 interface=wg0
+/interface wireguard print`,note:'public-key з виводу — у поле RELAY'+r+'_PUB.'},
+   {n:5,title:'Peer\'и і маршрути (ручна фаза; тепер це робить netctl)',cmds:
+`/interface wireguard peers add interface=wg0 public-key="{A_R${r}_PUB}" allowed-address=10.10${r}.0.11/32,10.10.1.0/24
+/interface wireguard peers add interface=wg0 public-key="{B_R${r}_PUB}" allowed-address=10.10${r}.0.12/32,10.10.2.0/24
+/interface wireguard peers add interface=wg0 public-key="{C_R${r}_PUB}" allowed-address=10.10${r}.0.13/32,10.10.3.0/24
+/ip route add dst-address=10.10.1.0/24 gateway=10.10${r}.0.11
+/ip route add dst-address=10.10.2.0/24 gateway=10.10${r}.0.12
+/ip route add dst-address=10.10.3.0/24 gateway=10.10${r}.0.13`,note:'Endpoint не вказуємо: relay бачить адресу ISP з першого handshake. Peer для hEX-D додав enroll_server автоматично.'},
+   {n:9,title:'Шлях керування і API для controller',cmds:
+`/ip firewall nat add chain=srcnat src-address=203.0.113.200 out-interface=wg0 action=masquerade comment=mgmt
+/user add name=controller group=full password="admin"
+/ip service set api address=203.0.113.200/32 disabled=no`,note:'NAT підміняє адресу controller на 10.10'+r+'.0.1, тому hEX відповідають назад у тунель. API приймає тільки controller.'}],
+  checks:`/interface wireguard peers print detail
+/ip firewall nat print
+/interface wireguard disable wg0
+/interface wireguard enable wg0`,
+  checkNote:'current-endpoint-address peer\'ів = 203.0.113.11/12/13/14 (адреси ISP). disable/enable — тест failover.'};}
+
+NODES.NATC={type:'nat',title:'NAT',sub:'інтернет',x:120,y:70,mod:'NAT',ad:'1 лінк',
+  role:'Вбудований NAT-вузол GNS3. Дає CONTROLLER доступ у справжній інтернет тільки для apk/pip/git. Сама лабораторія через нього не працює.',
+  ifs:[['nat0','DHCP 192.168.122.0/24','CONTROLLER eth1']],steps:[]};
+
+NODES.CONTROLLER={type:'ctrl',title:'CONTROLLER',sub:'203.0.113.200',mod:ALP,ad:2,x:130,y:200,
+  role:'Сервер централізованого керування. Тут лежить репозиторій /root/netctl: netctl.py (apply / status / optimize / watch), enroll_server.py (реєстрація нових роутерів, порт 8080), network.yaml (бажаний стан мережі), metrics.json (виміри затримок).',
+  state:'Керує 2 relay і 4 hEX через RouterOS API. P2P увімкнений. Адреси й маршрути на eth0 не зберігаються після перезапуску — повторіть крок 8 і маршрути з кроку 9.',
+  ifs:[['eth0','203.0.113.200/24','INTERNET e5'],['eth1','DHCP від NAT','NAT (реальний інтернет)']],
+  steps:[
+   {n:8,title:'Мережа',cmds:
+`ip link set eth0 up
+ip addr add 203.0.113.200/24 dev eth0
+ip link set eth1 up
+udhcpc -i eth1
+ping -c 3 203.0.113.101
+ping -c 3 8.8.8.8`},
+   {n:8,title:'Python і бібліотеки',cmds:
+`echo "https://dl-cdn.alpinelinux.org/alpine/v3.22/main" > /etc/apk/repositories
+echo "https://dl-cdn.alpinelinux.org/alpine/v3.22/community" >> /etc/apk/repositories
+apk update
+apk add python3 py3-pip py3-yaml git
+pip install --break-system-packages librouteros
+python3 -c "import librouteros, yaml; print('ok')"`},
+   {n:9,title:'Маршрути до тунелів через relay',cmds:
+`ip route add 10.101.0.0/24 via 203.0.113.101
+ip route add 10.102.0.0/24 via 203.0.113.102
+ping -c 3 10.101.0.11
+ping -c 3 10.102.0.11`},
+   {n:10,title:'Git (SSH-ключ) і код',cmds:
+`ssh-keygen -t ed25519 -C "gns3-controller" -f /root/.ssh/id_ed25519 -N ""
+cat /root/.ssh/id_ed25519.pub
+ssh -T git@github.com
+git clone git@github.com:Starezax/mikrotik-netctl.git /root/netctl
+cd /root/netctl`,note:'Публічний ключ додати на GitHub: Settings → SSH and GPG keys.'},
+   {n:10,title:'Перший запуск netctl',cmds:
+`python3 netctl.py status
+python3 netctl.py apply
+python3 netctl.py apply`,note:'Перший apply перейняв ручну конфігурацію (46 змін «-> comment=netctl»), другий — «everything already matches».'},
+   {n:11,title:'Сервіс реєстрації',cmds:`python3 enroll_server.py`,note:'Залиште консоль відкритою. Інвайт-код у network.yaml (invites:), одноразовий.'},
+   {n:12,title:'Оптимізація маршрутів',cmds:
+`python3 netctl.py optimize
+python3 netctl.py watch 30`,note:'Вибирає relay з найменшою сумою RTT для кожної пари сайтів, гістерезис 20% і 5 мс. watch — цикл моніторингу, Ctrl+C щоб зупинити.'},
+   {n:13,title:'Увімкнути P2P',cmds:
+`echo "" >> network.yaml
+echo "p2p:" >> network.yaml
+echo "  enabled: true" >> network.yaml
+echo "  net: 10.100.0" >> network.yaml
+echo "  interface: wg-p2p" >> network.yaml
+echo "  port: 13233" >> network.yaml
+python3 netctl.py apply
+python3 netctl.py status`},
+   {n:14,title:'Через 3 хв після «закриття» ISP-D',cmds:`python3 netctl.py apply`,note:'Очікувано: hEX-C <-> hEX-D: via relay (no handshake), решта пар direct.'}],
+  checks:`python3 netctl.py status`};
+
+NODES.INTERNET={type:'sw',title:'INTERNET',sub:'203.0.113.0/24',mod:'Ethernet switch',ad:'8 портів',x:550,y:200,
+  role:'Вбудований Ethernet switch GNS3, емулює публічний інтернет. Налаштовувати нічого, тільки кабелі. Затримки задаються на лінках (правий клік → Packet filters → Delay).',
+  state:'Зараз Delay 40 мс на лінку INTERNET ↔ RELAY2 (переставлений з RELAY1 під час демо watch).',
+  ifs:[['e0','ISP-A ether1',''],['e1','ISP-B ether1',''],['e2','ISP-C ether1',''],['e3','RELAY1 ether1',''],['e4','RELAY2 ether1',''],['e5','CONTROLLER eth0',''],['e6','ISP-D ether1','']],
+  steps:[{n:1,title:'Усі кабелі',raw:true,cmds:
+`INTERNET e0   <-> ISP-A ether1
+INTERNET e1   <-> ISP-B ether1
+INTERNET e2   <-> ISP-C ether1
+INTERNET e3   <-> RELAY1 ether1
+INTERNET e4   <-> RELAY2 ether1
+INTERNET e5   <-> CONTROLLER eth0
+INTERNET e6   <-> ISP-D ether1
+CONTROLLER eth1 <-> NAT
+ISP-A ether2  <-> hEX-A ether1
+ISP-B ether2  <-> hEX-B ether1
+ISP-C ether2  <-> hEX-C ether1
+ISP-D ether2  <-> hEX-D ether1
+hEX-A ether2  <-> PC-A eth0
+hEX-B ether2  <-> PC-B eth0
+hEX-C ether2  <-> PC-C eth0
+hEX-D ether2  <-> PC-D eth0
+PC-D eth1     <-> NAT-D`,note:'Адаптери (Configure → Network → Adapters, на зупиненому вузлі): ISP і hEX — 2, RELAY і PC-A/B/C — 1, CONTROLLER і PC-D — 2.'},
+   {n:12,title:'Затримка для демо оптимізації',raw:true,cmds:
+`Правий клік на лінку INTERNET <-> RELAY1 -> Packet filters -> Delay 40 ms
+(для демо watch: прибрати з RELAY1, поставити на INTERNET <-> RELAY2)`}]};
+
+NODES.CHECK={type:'chk',title:'Перевірка',sub:'кроки 7, 10–14',x:990,y:200,role:'Сценарій перевірки всього проєкту по порядку. У дужках — на якому вузлі.',ifs:[],
+  steps:[
+   {n:7,title:'Тунелі (hEX-A)',cmds:`/interface wireguard peers print detail
+/ping 10.101.0.1 count=3
+/ping 10.102.0.1 count=3`},
+   {n:7,title:'Доказ NAT (RELAY1, потім ISP-A)',cmds:`/interface wireguard peers print detail
+/ip firewall connection print detail where protocol=udp`},
+   {n:7,title:'Failover (PC-A, RELAY1, hEX-A)',cmds:`ping 10.10.2.10
+/interface wireguard disable wg0
+/ip route print where dst-address=10.10.2.0/24
+traceroute 10.10.2.10
+/interface wireguard enable wg0`,note:'Розрив ≈20–30 с (check-gateway), потім трафік іде через інший relay.'},
+   {n:10,title:'Дрифт конфігурації (hEX-B, потім CONTROLLER)',cmds:`/ip route remove [find where dst-address=10.10.1.0/24 and gateway=10.102.0.1]
+python3 netctl.py apply`,note:'apply повертає видалений маршрут.'},
+   {n:11,title:'Новий сайт (PC-D)',cmds:`ping -c 3 10.10.1.10
+traceroute 10.10.1.10`},
+   {n:12,title:'Оптимізація (CONTROLLER, PC-A)',cmds:`python3 netctl.py optimize
+traceroute 10.10.2.10`},
+   {n:13,title:'P2P (PC-A)',cmds:`traceroute 10.10.2.10`,note:'3 хопи: 10.10.1.1 → 10.100.0.12 → 10.10.2.10, без relay.'},
+   {n:14,title:'Fallback (PC-C і PC-A)',cmds:`traceroute 10.10.4.10`,note:'З PC-C — через relay (обидва ISP закриті), з PC-A — напряму.'}]};
+
+function isp(L,n){const N={type:'isp',title:'ISP-'+L,sub:'203.0.113.1'+n+' / NAT',mod:CHR,ad:2,x:COLX[L],y:340,
+  role:'Провайдер з NAT, за яким сидить hEX-'+L+'. Його публічна адреса — те, що бачить світ замість роутера. Не частина системи, налаштовується вручну.',
+  ifs:[['ether1','203.0.113.1'+n+'/24','INTERNET'],['ether2','100.64.'+n+'.1/24','hEX-'+L+' ether1']],
+  steps:[ispBase(L,n)],checks:`/ip firewall nat print
+/ip firewall connection print where dst-address~":13233"`};
+  return N;}
+NODES['ISP-A']=isp('A',1); NODES['ISP-A'].state='Відкритий: є port mapping UDP 13233 → hEX-A, тому P2P з ним працює.';
+NODES['ISP-A'].steps.push({n:13,title:'Port mapping для P2P (як UPnP)',cmds:P2P_MAP(1,'100.64.1.2'),note:'Без нього hole punching ламається через колізії в таблиці з\'єднань.'});
+NODES['ISP-B']=isp('B',2); NODES['ISP-B'].state='Відкритий: є port mapping UDP 13233 → hEX-B.';
+NODES['ISP-B'].steps.push({n:13,title:'Port mapping для P2P',cmds:P2P_MAP(2,'100.64.2.2')});
+NODES['ISP-C']=isp('C',3); NODES['ISP-C'].closed=true; NODES['ISP-C'].state='Закритий: port mapping немає. P2P з hEX-C працює лише з відкритими сайтами (A, B).';
+NODES['ISP-C'].steps.push({n:14,title:'Очистити старі записи для демо fallback',cmds:CLEAR13233});
+NODES['ISP-D']=isp('D',4); NODES['ISP-D'].closed=true; NODES['ISP-D'].ifs[1][2]='hEX-D ether1 (DHCP)';
+NODES['ISP-D'].state='Закритий: port mapping прибрали на кроці 14. Тому пара C ↔ D іде через relay. Роздає hEX-D адресу по DHCP (зараз 100.64.4.254).';
+NODES['ISP-D'].steps=[{n:11,title:'Адреси, NAT і DHCP-сервер',cmds:
+`/system identity set name=ISP-D
+/ip address add address=203.0.113.14/24 interface=ether1
+/ip address add address=100.64.4.1/24 interface=ether2
+/ip firewall nat add chain=srcnat out-interface=ether1 action=masquerade
+/ip pool add name=isp-pool ranges=100.64.4.2-100.64.4.254
+/ip dhcp-server add name=isp-dhcp interface=ether2 address-pool=isp-pool disabled=no
+/ip dhcp-server network add address=100.64.4.0/24 gateway=100.64.4.1 dns-server=8.8.8.8`},
+ {n:13,title:'Port mapping для P2P (потім прибрали)',cmds:P2P_MAP(4,'100.64.4.254')},
+ {n:14,title:'«Закрити» ISP-D для демо fallback',cmds:`/ip firewall nat remove [find where comment="p2p port mapping"]
+`+CLEAR13233}];
+
+function site(L,n){const o=[1,2,3].filter(i=>i!==n);return{type:'site',title:'hEX-'+L,sub:'LAN 10.10.'+n+'.1',mod:CHR,ad:2,x:COLX[L],y:455,
+  role:'Роутер сайту (CHR замість фізичного hEX). Налаштований вручну на кроці 4, потім перейнятий netctl. Тунелі до обох relay і прямий P2P-тунель до інших сайтів.',
+  state:'Маршрути до інших LAN: distance 1 — прямий P2P (10.100.0.X), де він працює; далі relay в порядку RTT. '+(L==='C'?'До hEX-D — тільки через relay.':''),
+  ifs:[['ether1','100.64.'+n+'.2/24','ISP-'+L+' ether2'],['ether2','10.10.'+n+'.1/24','PC-'+L],['wg-r1','10.101.0.1'+n+'/24','до RELAY1'],['wg-r2','10.102.0.1'+n+'/24','до RELAY2'],['wg-p2p','10.100.0.1'+n+'/24','прямо до інших hEX (netctl)']],
+  steps:[
+   {n:4,title:'Базові адреси і вихід в інтернет',cmds:
+`/system identity set name=hEX-${L}
+/ip address add address=100.64.${n}.2/24 interface=ether1
+/ip route add dst-address=0.0.0.0/0 gateway=100.64.${n}.1
+/ip address add address=10.10.${n}.1/24 interface=ether2`},
+   {n:4,title:'Інтерфейси WireGuard',cmds:
+`/interface wireguard add name=wg-r1 listen-port=13231
+/interface wireguard add name=wg-r2 listen-port=13232
+/interface wireguard print
+/ip address add address=10.101.0.1${n}/24 interface=wg-r1
+/ip address add address=10.102.0.1${n}/24 interface=wg-r2`,note:'public-key від wg-r1 і wg-r2 — у поля '+L+'_R1_PUB і '+L+'_R2_PUB. Вставляйте по одній команді: консоль RouterOS губить рядки при вставці блоком.'},
+   {n:4,title:'Peer\'и (relay)',cmds:
+`/interface wireguard peers add interface=wg-r1 public-key="{RELAY1_PUB}" endpoint-address=203.0.113.101 endpoint-port=51820 allowed-address=10.0.0.0/8 persistent-keepalive=25s
+/interface wireguard peers add interface=wg-r2 public-key="{RELAY2_PUB}" endpoint-address=203.0.113.102 endpoint-port=51820 allowed-address=10.0.0.0/8 persistent-keepalive=25s`},
+   {n:4,title:'Маршрути з failover',cmds:
+`/ip route add dst-address=10.10.${o[0]}.0/24 gateway=10.101.0.1 check-gateway=ping distance=1
+/ip route add dst-address=10.10.${o[0]}.0/24 gateway=10.102.0.1 check-gateway=ping distance=2
+/ip route add dst-address=10.10.${o[1]}.0/24 gateway=10.101.0.1 check-gateway=ping distance=1
+/ip route add dst-address=10.10.${o[1]}.0/24 gateway=10.102.0.1 check-gateway=ping distance=2`,note:'Маршрути до 10.10.4.0/24 (hEX-D) і P2P netctl додав сам.'},
+   {n:9,title:'API для controller',cmds:API_HEX,note:'API приймає тільки адреси relay у тунелях — тобто лише запити controller через relay.'}],
+  checks:`/interface wireguard peers print detail
+/ip route print where dst-address~"10.10."`};}
+NODES['hEX-A']=site('A',1); NODES['hEX-B']=site('B',2); NODES['hEX-C']=site('C',3);
+NODES['hEX-D']={type:'site',title:'hEX-D',sub:'LAN 10.10.4.1',mod:CHR,ad:2,x:COLX.D,y:455,
+  role:'Четвертий роутер, доданий автоматично через провіженінг. Вручну на ньому налаштовано тільки «заводський» мінімум, решту зробили provision.py і controller.',
+  state:'До hEX-C — тільки через relay (обидва ISP закриті), до A і B — напряму.',
+  ifs:[['ether1','100.64.4.254/24 (DHCP)','ISP-D ether2'],['ether2','192.168.88.1/24 + 10.10.4.1/24','PC-D'],['wg-r1','10.101.0.14/24','до RELAY1 (provision)'],['wg-r2','10.102.0.14/24','до RELAY2 (provision)'],['wg-p2p','10.100.0.14/24','прямо (netctl)']],
+  steps:[{n:11,title:'«Заводський» стан, як у нового hEX',cmds:
+`/ip dhcp-client print
+/ip dhcp-client add interface=ether1 disabled=no
+/ip address add address=192.168.88.1/24 interface=ether2
+/ip firewall nat add chain=srcnat out-interface=ether1 action=masquerade
+/ip service print where name=api`,note:'dhcp-client add — лише якщо список порожній. Якщо API має прапорець X: /ip service enable api. Далі все робить provision.py з PC-D.'}],
+  checks:`/system identity print
+/interface wireguard peers print detail
+/ip route print where dst-address~"10.10."`};
+
+function pc(L,n){const o=[1,2,3,4].filter(i=>i!==n);return{type:'pc',title:'PC-'+L,sub:'10.10.'+n+'.10',mod:ALP,ad:1,x:COLX[L],y:575,
+  role:'Комп\'ютер у LAN сайту '+L+'. Нічого не знає про тунелі, шле пакети на шлюз 10.10.'+n+'.1. Логін root.',
+  ifs:[['eth0','10.10.'+n+'.10/24, шлюз 10.10.'+n+'.1','hEX-'+L+' ether2']],
+  steps:[{n:6,title:'Адреса і шлюз',cmds:
+`ip link set eth0 up
+ip addr add 10.10.${n}.10/24 dev eth0
+ip route add default via 10.10.${n}.1`,note:'Не зберігається після перезапуску — виконайте ще раз.'}],
+  checks:`ping -c 3 10.10.${o[0]}.10
+ping -c 3 10.10.${o[1]}.10
+ping -c 3 10.10.${o[2]}.10
+traceroute 10.10.${o[0]}.10`,
+  checkNote:'traceroute: 10.100.0.X — прямий P2P, 10.101.0.1 / 10.102.0.1 — через relay.'};}
+NODES['PC-A']=pc('A',1); NODES['PC-B']=pc('B',2); NODES['PC-C']=pc('C',3);
+NODES['PC-D']={type:'pc',title:'PC-D',sub:'10.10.4.10',mod:ALP,ad:2,x:COLX.D,y:575,
+  role:'ПК у LAN нового роутера. З нього запускався provision.py — як ноутбук адміна, підключений до нового hEX. eth1 через NAT-D дає реальний інтернет для apk/pip/git.',
+  ifs:[['eth0','192.168.88.10/24 + 10.10.4.10/24','hEX-D ether2'],['eth1','DHCP від NAT-D','NAT-D']],
+  steps:[
+   {n:11,title:'Мережа',cmds:
+`ip link set eth0 up
+ip addr add 192.168.88.10/24 dev eth0
+ip link set eth1 up
+udhcpc -i eth1
+ping -c 3 192.168.88.1`},
+   {n:11,title:'Python',cmds:
+`echo "https://dl-cdn.alpinelinux.org/alpine/v3.22/main" > /etc/apk/repositories
+echo "https://dl-cdn.alpinelinux.org/alpine/v3.22/community" >> /etc/apk/repositories
+apk update
+apk add python3 py3-pip git
+pip install --break-system-packages librouteros`},
+   {n:11,title:'Шлях до controller і код',cmds:
+`ip route add 203.0.113.0/24 via 192.168.88.1
+git clone https://github.com/Starezax/mikrotik-netctl.git /root/netctl
+cd /root/netctl
+wget -qO- http://203.0.113.200:8080/relays`},
+   {n:11,title:'Провіженінг',cmds:`python3 provision.py --password ROUTER_PASSWORD --token INVITE-D-7F3K --name hEX-D`,note:'ROUTER_PASSWORD — пароль admin на hEX-D. Інвайт одноразовий; для наступного роутера додайте новий код у invites: на controller.'},
+   {n:11,title:'Перейти в нову LAN',cmds:
+`ip addr add 10.10.4.10/24 dev eth0
+ip route add 10.10.0.0/16 via 10.10.4.1
+ip route add 10.101.0.0/24 via 10.10.4.1
+ip route add 10.102.0.0/24 via 10.10.4.1`,note:'Останні два маршрути потрібні, бо Alpine відкидає відповіді з інтерфейсу, через який до джерела немає маршруту (rp_filter) — інакше traceroute показує * * *.'}],
+  checks:`ping -c 3 10.10.1.10
+traceroute 10.10.1.10`};
+NODES.NATD={type:'nat',title:'NAT-D',sub:'інтернет',x:1045,y:575,mod:'NAT',ad:'1 лінк',
+  role:'Окремий NAT-вузол для PC-D (один NAT-вузол GNS3 приймає один лінк). Тільки для apk/pip/git.',ifs:[['nat0','DHCP 192.168.122.0/24','PC-D eth1']],steps:[]};
+
+const W={relay:170,isp:170,site:170,pc:150,sw:240,chk:130,ctrl:170,nat:100};
+const H={relay:66,isp:62,site:66,pc:58,sw:62,chk:50,ctrl:66,nat:50};
+let selected='CONTROLLER';
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function line(x1,y1,x2,y2){return `<line class="wire" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`}
+function lbl(x,y,t,a='start'){return `<text class="p" x="${x}" y="${y}" text-anchor="${a}">${t}</text>`}
+
+function drawWires(){
+  let h='';const sw=NODES.INTERNET, swT=sw.y-H.sw/2, swB=sw.y+H.sw/2;
+  h+=line(NODES.RELAY1.x,NODES.RELAY1.y+33,sw.x-80,swT)+lbl(NODES.RELAY1.x-58,NODES.RELAY1.y+50,'ether1');
+  h+=line(NODES.RELAY2.x,NODES.RELAY2.y+33,sw.x+80,swT)+lbl(NODES.RELAY2.x+10,NODES.RELAY2.y+50,'ether1');
+  const c=NODES.CONTROLLER;
+  h+=line(c.x+W.ctrl/2,c.y,sw.x-W.sw/2,sw.y)+lbl(c.x+W.ctrl/2+6,c.y-6,'eth0')+lbl(sw.x-W.sw/2-22,sw.y-6,'e5');
+  h+=line(NODES.NATC.x,NODES.NATC.y+25,c.x,c.y-33)+lbl(c.x+6,c.y-42,'eth1');
+  const sx={A:sw.x-90,B:sw.x-30,C:sw.x+30,D:sw.x+90}, ports={A:'e0',B:'e1',C:'e2',D:'e6'};
+  for(const L of ['A','B','C','D']){
+    const i=NODES['ISP-'+L], s=NODES['hEX-'+L], p=NODES['PC-'+L];
+    h+=line(sx[L],swB,i.x,i.y-31)+lbl(i.x+6,i.y-40,'ether1')+lbl(sx[L]+3,swB+13,ports[L]);
+    h+=line(i.x,i.y+31,s.x,s.y-33)+lbl(i.x+6,i.y+45,'ether2')+lbl(s.x+6,s.y-40,'ether1');
+    h+=line(s.x,s.y+33,p.x,p.y-29)+lbl(s.x+6,s.y+47,'ether2')+lbl(p.x+6,p.y-36,'eth0');
+  }
+  const pd=NODES['PC-D'],nd=NODES.NATD;
+  h+=line(pd.x+W.pc/2,pd.y,nd.x-W.nat/2,nd.y)+lbl(pd.x+W.pc/2+3,pd.y-6,'eth1');
+  document.getElementById('wires').innerHTML=h;
+  let t='';
+  for(const L of ['A','B','C','D']){const s=NODES['hEX-'+L];
+    for(const r of ['RELAY1','RELAY2']){const R=NODES[r];const off=r==='RELAY1'?-40:40;
+      t+=`<path class="tun" d="M${s.x+off/4},${s.y-33} C${s.x+off*2},270 ${R.x},210 ${R.x+(COLX[L]-545)/12},${R.y+33}"/>`;}}
+  document.getElementById('tunnels').innerHTML=t;
+  let p='';const L4=['A','B','C','D'];
+  for(let i=0;i<4;i++)for(let j=i+1;j<4;j++){
+    const a=NODES['hEX-'+L4[i]],b=NODES['hEX-'+L4[j]],d=j-i;
+    const off=(L4[i]==='C'&&L4[j]==='D');
+    p+=`<path class="p2p${off?' off':''}" d="M${a.x+20},${a.y+33} Q${(a.x+b.x)/2},${a.y+33+28*d+8} ${b.x-20},${b.y+33}"/>`;}
+  document.getElementById('p2p').innerHTML=p;
+}
+function ranges(a){a.sort((x,y)=>x-y);const out=[];let i=0;
+  while(i<a.length){let j=i;while(j+1<a.length&&a[j+1]===a[j]+1)j++;out.push(j-i>=2?a[i]+'–'+a[j]:a.slice(i,j+1).join(','));i=j+1;}
+  return out.join(',');}
+function drawNodes(){
+  let h='';
+  for(const id in NODES){const n=NODES[id],w=W[n.type],hh=H[n.type];
+    const steps=ranges([...new Set(n.steps.map(s=>s.n))]);
+    const cls=n.type+(n.closed?' closed':'')+(id===selected?' sel':'');
+    h+=`<g class="node ${cls}" onclick="select('${id}')" tabindex="0" role="button" aria-label="${n.title}" onkeydown="if(event.key==='Enter')select('${id}')">`+
+      `<rect x="${n.x-w/2}" y="${n.y-hh/2}" width="${w}" height="${hh}" rx="9"/>`+
+      (n.type==='nat'||n.type==='chk'?`<text class="t" x="${n.x}" y="${n.y-8}">${n.title}</text><text class="s" x="${n.x}" y="${n.y+11}">${n.sub}</text>`:
+      `<text class="t" x="${n.x}" y="${n.y-16}">${n.title}</text><text class="m" x="${n.x}" y="${n.y+2}">${n.mod}</text><text class="s" x="${n.x}" y="${n.y+19}">${n.sub}</text>`);
+    if(steps){const bw=Math.max(20,steps.length*6.2+10);
+      h+=`<rect class="badge" x="${n.x+w/2-bw+6}" y="${n.y-hh/2-9}" width="${bw}" height="18" rx="9"/><text class="badge" x="${n.x+w/2-bw/2+6}" y="${n.y-hh/2}">${steps}</text>`;}
+    h+=`</g>`;}
+  document.getElementById('nodes').innerHTML=h;
+}
+function fill(c,raw){let s=esc(c);if(raw)return s;
+  return s.replace(/\{([A-Z0-9_]+)\}/g,(m,k)=>keyVals[k]?`<span class="kv">${esc(keyVals[k])}</span>`:`<span class="ph">${k}</span>`);}
+function plain(c){return c.replace(/\{([A-Z0-9_]+)\}/g,(m,k)=>keyVals[k]||k)}
+function renderPanel(){
+  const n=NODES[selected];
+  let h=`<h2>${n.title}</h2><div class="modbox"><span>Модуль у GNS3</span><b>${n.mod}</b><span>${typeof n.ad==='number'?'адаптерів: '+n.ad:n.ad}</span></div><p class="info">${n.role}</p>`;
+  if(n.state) h+=`<div class="state"><b>Зараз:</b> ${n.state}</div>`;
+  if(n.ifs.length) h+=`<table><thead><tr><th>Інтерфейс</th><th>Адреса</th><th>Куди</th></tr></thead><tbody>`+n.ifs.map(r=>`<tr><td><code>${r[0]}</code></td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join('')+`</tbody></table>`;
+  n.steps.forEach((s,i)=>{h+=`<div class="step"><div class="stephead"><h3><span class="num">${s.n}</span>${s.title}</h3><button onclick="copyStep(this,${i})">Копіювати</button></div><pre>${fill(s.cmds,s.raw)}</pre>${s.note?`<div class="note">${s.note}</div>`:''}</div>`;});
+  if(n.checks) h+=`<div class="step"><div class="stephead"><h3><span class="num" style="background:var(--ok)">✓</span>Перевірка на цьому вузлі</h3><button onclick="copyStep(this,-1)">Копіювати</button></div><pre>${fill(n.checks)}</pre>${n.checkNote?`<div class="note">${n.checkNote}</div>`:''}</div>`;
+  document.getElementById('panel').innerHTML=h;
+}
+async function copyText(btn,text){
+  try{await navigator.clipboard.writeText(text);btn.textContent='Скопійовано';btn.classList.add('done');}catch(e){btn.textContent='Виділіть вручну';}
+  setTimeout(()=>{btn.textContent='Копіювати';btn.classList.remove('done')},1500);}
+function copyStep(btn,i){const n=NODES[selected];copyText(btn,plain(i<0?n.checks:n.steps[i].cmds));}
+function select(id){selected=id;drawNodes();renderPanel();}
+function renderKeys(){document.getElementById('keyGrid').innerHTML=KEYS.map(([k,l])=>`<div><label for="k_${k}">${k} <span style="opacity:.7">(${l})</span></label><input id="k_${k}" class="${keyVals[k]?'filled':''}" value="${keyVals[k]?esc(keyVals[k]):''}" placeholder="вставте public-key" oninput="setKey('${k}',this)"></div>`).join('');}
+function setKey(k,el){const v=el.value.trim();if(v)keyVals[k]=v;else delete keyVals[k];el.classList.toggle('filled',!!v);try{localStorage.setItem('gns3keys',JSON.stringify(keyVals))}catch(e){}renderPanel();}
+function clearKeys(){keyVals={};try{localStorage.removeItem('gns3keys')}catch(e){}renderKeys();renderPanel();}
+drawWires();drawNodes();renderPanel();renderKeys();
+</script>
+</body>
+</html>
