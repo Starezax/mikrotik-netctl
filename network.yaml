@@ -30,3 +30,9 @@ sites:
     id: 14
     lan: 10.10.4.0/24
 invites: []
+
+p2p:
+  enabled: true
+  net: 10.100.0
+  interface: wg-p2p
+  port: 13233
