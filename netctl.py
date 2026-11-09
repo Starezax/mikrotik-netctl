@@ -134,9 +134,10 @@ def save_metrics(m):
 
 
 def parse_time(s):
-    """RouterOS durations: '82ms141us', '966us', '1s200ms' -> milliseconds."""
-    unit = {"s": 1000.0, "ms": 1.0, "us": 0.001}
-    return sum(float(n) * unit[u] for n, u in re.findall(r"(\d+(?:\.\d+)?)(ms|us|s)", s or ""))
+    """RouterOS durations: '82ms141us', '966us', '1m6s' -> milliseconds."""
+    unit = {"w": 604800000.0, "d": 86400000.0, "h": 3600000.0, "m": 60000.0,
+            "s": 1000.0, "ms": 1.0, "us": 0.001}
+    return sum(float(n) * unit[u] for n, u in re.findall(r"(\d+(?:\.\d+)?)(ms|us|w|d|h|m|s)", s or ""))
 
 
 def ping(api, address, count=3):
@@ -171,6 +172,90 @@ def relay_order(cfg, metrics, a, b):
         order.remove(chosen)
         order.insert(0, chosen)
     return order
+
+
+# ---------- direct P2P tunnels ----------
+
+P2P_PEERS = {}   # (site, other site) -> public key of the other site's wg-p2p
+
+
+def public_addresses(cfg, conns, site_key):
+    """Each site's public IP as the relays see it (the address of its ISP's NAT)."""
+    seen = {}
+    for r in cfg["relays"]:
+        for p in conns[r].path("interface", "wireguard", "peers"):
+            seen[p.get("public-key")] = (p.get("current-endpoint-address"), p.get("current-endpoint-port"))
+    out = {}
+    for s in cfg["sites"]:
+        for r, rc in cfg["relays"].items():
+            ip, port = seen.get(site_key[(s, r)], (None, None))
+            if ip:
+                out[s] = ip
+                if str(port) != str(rc["site_port"]):
+                    print(f"[{s}] note: its NAT changed port {rc['site_port']} -> {port}; P2P may not work")
+                break
+    return out
+
+
+def handshake_age(peer):
+    """Seconds since the last handshake, or None if there never was one."""
+    hs = peer.get("last-handshake")
+    return parse_time(hs) / 1000 if hs else None
+
+
+def setup_p2p(cfg, conns, site_key, wait=30):
+    """Create wg-p2p on every site with a peer for every other site, then see which pairs connect.
+
+    Both sides of a pair send keepalives to each other's public address at the same time,
+    so each NAT lets the other side in (UDP hole punching). Pairs that never handshake stay
+    on the relays.
+    """
+    p2p, sites = cfg["p2p"], cfg["sites"]
+    ifname, port, net = p2p["interface"], p2p["port"], p2p["net"]
+    public = public_addresses(cfg, conns, site_key)
+    key = {}
+    for s, sc in sites.items():
+        api, log = conns[s], logger(s)
+        key[s] = ensure_wg(api, ifname, port, log)
+        ensure(api, ("ip", "address"), {"address": f'{net}.{sc["id"]}/24', "interface": ifname}, {}, log)
+
+    before = CHANGES
+    P2P_PEERS.clear()
+    for s in sites:
+        api, log = conns[s], logger(s)
+        for o, oc in sites.items():
+            if o == s or o not in public:
+                continue
+            ensure(api, ("interface", "wireguard", "peers"), {"public-key": key[o]},
+                   {"interface": ifname, "endpoint-address": public[o], "endpoint-port": port,
+                    "allowed-address": f'{net}.{oc["id"]}/32,{oc["lan"]}',
+                    "persistent-keepalive": "10s"}, log)
+            P2P_PEERS[(s, o)] = key[o]
+
+    names = list(sites)
+    pairs = [(a, b) for i, a in enumerate(names) for b in names[i + 1:]]
+
+    def check():
+        ok = {}
+        ages = {}
+        for s in names:
+            for p in conns[s].path("interface", "wireguard", "peers"):
+                if p.get("interface") == ifname:
+                    ages[(s, p.get("public-key"))] = handshake_age(p)
+        for a, b in pairs:
+            ab, ba = ages.get((a, key.get(b))), ages.get((b, key.get(a)))
+            ok[pair(a, b)] = any(x is not None and x < 180 for x in (ab, ba))
+        return ok
+
+    direct = check()
+    if CHANGES > before and not all(direct.values()):
+        print(f"\nWaiting up to {wait} s for the new direct tunnels to handshake...")
+        for _ in range(wait // 5):
+            time.sleep(5)
+            direct = check()
+            if all(direct.values()):
+                break
+    return direct
 
 
 # ---------- commands ----------
@@ -211,29 +296,46 @@ def apply(cfg):
         prune(api, ("ip", "route"), keep_routes,
               lambda i: (i.get("dst-address"), i.get("gateway")), log)
 
-    # Phase 3: sites know every relay and have routes to the other LANs:
-    # distance 1 through the best relay for that pair of sites, then the others as backups.
+    # Phase 3 (optional): direct P2P tunnels between sites, through their NATs.
+    p2p = cfg.get("p2p") or {}
+    direct = setup_p2p(cfg, conns, site_key) if p2p.get("enabled") else {}
+
+    # Phase 4: routes to the other LANs. Distance 1 = direct tunnel if it works,
+    # then the relays, best first; check-gateway falls back to the next one on failure.
     metrics = load_metrics()
     for s, sc in sites.items():
         api, log = conns[s], logger(s)
-        keep_routes = set()
+        keep_routes, keep_peers = set(), set()
         for r, rc in relays.items():
             ensure(api, ("interface", "wireguard", "peers"), {"public-key": relay_key[r]},
                    {"interface": rc["site_if"], "endpoint-address": rc["public"],
                     "endpoint-port": rc["port"], "allowed-address": "10.0.0.0/8",
                     "persistent-keepalive": "25s"}, log)
+            keep_peers.add((rc["site_if"], relay_key[r]))
         for o, oc in sites.items():
             if o == s:
                 continue
-            for distance, r in enumerate(relay_order(cfg, metrics, s, o), start=1):
-                gw = f'{relays[r]["net"]}.1'
+            gateways = []
+            if direct.get(pair(s, o)):
+                gateways.append(f'{p2p["net"]}.{oc["id"]}')
+            gateways += [f'{relays[r]["net"]}.1' for r in relay_order(cfg, metrics, s, o)]
+            for distance, gw in enumerate(gateways, start=1):
                 ensure(api, ("ip", "route"), {"dst-address": oc["lan"], "gateway": gw},
                        {"distance": distance, "check-gateway": "ping"}, log)
                 keep_routes.add((oc["lan"], gw))
-        prune(api, ("interface", "wireguard", "peers"), set(relay_key.values()),
-              lambda i: i.get("public-key"), log)
+            if p2p.get("enabled") and (s, o) in P2P_PEERS:
+                keep_peers.add((p2p["interface"], P2P_PEERS[(s, o)]))
+        prune(api, ("interface", "wireguard", "peers"), keep_peers,
+              lambda i: (i.get("interface"), i.get("public-key")), log)
         prune(api, ("ip", "route"), keep_routes,
               lambda i: (i.get("dst-address"), i.get("gateway")), log)
+
+    if p2p.get("enabled"):
+        print("\nP2P between sites:")
+        names = list(sites)
+        for a_i, a in enumerate(names):
+            for b in names[a_i + 1:]:
+                print(f"  {a} <-> {b}: " + ("direct" if direct.get(pair(a, b)) else "via relay (no handshake)"))
 
     for api in conns.values():
         api.close()
@@ -295,6 +397,14 @@ def status(cfg):
         for p in conns[r].path("interface", "wireguard", "peers"):
             print(f'  {p.get("allowed-address", ""):32} from {p.get("current-endpoint-address") or "-":15}'
                   f'  handshake {p.get("last-handshake") or "never"}')
+    if (cfg.get("p2p") or {}).get("enabled"):
+        ifname = cfg["p2p"]["interface"]
+        print("\n=== Direct P2P tunnels ===")
+        for s in cfg["sites"]:
+            for p in conns[s].path("interface", "wireguard", "peers"):
+                if p.get("interface") == ifname:
+                    print(f'  {s:8} -> {p.get("allowed-address", ""):30} '
+                          f'handshake {p.get("last-handshake") or "never"}')
     m = load_metrics()
     if m.get("rtt"):
         print(f"\n=== Delays measured {m.get('time')} (ms) ===")
