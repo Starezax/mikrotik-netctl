@@ -30,3 +30,7 @@ sites:
   hEX-C:
     id: 13
     lan: 10.10.3.0/24
+
+# One-time invite codes for new routers. Each code works once and is removed after use.
+invites:
+  - INVITE-D-7F3K
