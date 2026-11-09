@@ -1,13 +1,18 @@
+# Desired state of the network. netctl.py makes the routers match this file.
+# On the controller this file is the live source of truth: enroll_server.py rewrites it
+# (adds new sites, removes used invites), so commit it from the controller.
+
 api:
   user: controller
-  password: admin
+  password: admin            # lab only; use a strong password from an env variable on real devices
+
 relays:
   RELAY1:
-    mgmt: 203.0.113.101
-    public: 203.0.113.101
+    mgmt: 203.0.113.101      # address the controller uses for the relay's API
+    public: 203.0.113.101    # WireGuard endpoint for the sites
     port: 51820
-    net: 10.101.0
-    site_if: wg-r1
+    net: 10.101.0            # tunnel subnet behind this relay (relay = .1, site = its id)
+    site_if: wg-r1           # interface name on the sites for this relay
     site_port: 13231
   RELAY2:
     mgmt: 203.0.113.102
@@ -16,7 +21,8 @@ relays:
     net: 10.102.0
     site_if: wg-r2
     site_port: 13232
-sites:
+
+sites:                       # id = 10 + N, LAN = 10.10.N.0/24
   hEX-A:
     id: 11
     lan: 10.10.1.0/24
@@ -26,11 +32,14 @@ sites:
   hEX-C:
     id: 13
     lan: 10.10.3.0/24
-  hEX-D:
+  hEX-D:                     # added automatically by enroll_server.py (provisioning)
     id: 14
     lan: 10.10.4.0/24
+
+# One-time invite codes for new routers; each is removed after use.
 invites: []
 
+# Direct site-to-site tunnels; pairs that can't handshake stay on the relays.
 p2p:
   enabled: true
   net: 10.100.0
