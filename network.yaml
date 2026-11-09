@@ -1,17 +1,14 @@
-# Desired state of the network. The controller (netctl.py) makes the routers match this file.
-
 api:
   user: controller
   password: admin
-
 relays:
   RELAY1:
-    mgmt: 203.0.113.101      # address the controller uses to reach the relay's API
-    public: 203.0.113.101    # address the sites connect to (WireGuard endpoint)
-    port: 51820              # WireGuard port on the relay
-    net: 10.101.0            # tunnel subnet behind this relay (relay = .1)
-    site_if: wg-r1           # interface name on the sites for this relay
-    site_port: 13231         # listen-port of that interface on the sites
+    mgmt: 203.0.113.101
+    public: 203.0.113.101
+    port: 51820
+    net: 10.101.0
+    site_if: wg-r1
+    site_port: 13231
   RELAY2:
     mgmt: 203.0.113.102
     public: 203.0.113.102
@@ -19,10 +16,9 @@ relays:
     net: 10.102.0
     site_if: wg-r2
     site_port: 13232
-
 sites:
   hEX-A:
-    id: 11                   # last octet of the site's tunnel addresses
+    id: 11
     lan: 10.10.1.0/24
   hEX-B:
     id: 12
@@ -30,7 +26,7 @@ sites:
   hEX-C:
     id: 13
     lan: 10.10.3.0/24
-
-# One-time invite codes for new routers. Each code works once and is removed after use.
-invites:
-  - INVITE-D-7F3K
+  hEX-D:
+    id: 14
+    lan: 10.10.4.0/24
+invites: []
